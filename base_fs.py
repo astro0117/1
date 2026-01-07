@@ -3,7 +3,6 @@
 基础文件系统实现
 包含：虚拟磁盘、inode、目录、基本文件操作
 """
-
 import os
 import time
 import json
@@ -11,8 +10,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
 from collections import OrderedDict
-
-from constants import FileType, Permission, MAX_FILENAME, MAX_OPEN_FILES
+from constants import FileType, MAX_FILENAME, MAX_OPEN_FILES
 
 
 @dataclass
@@ -53,10 +51,12 @@ class Inode:
         result += 'r' if (perm & 0o400) else '-'
         result += 'w' if (perm & 0o200) else '-'
         result += 'x' if (perm & 0o100) else '-'
+
         # 组权限
         result += 'r' if (perm & 0o040) else '-'
         result += 'w' if (perm & 0o020) else '-'
         result += 'x' if (perm & 0o010) else '-'
+
         # 其他用户权限
         result += 'r' if (perm & 0o004) else '-'
         result += 'w' if (perm & 0o002) else '-'
@@ -184,12 +184,17 @@ class SimpleFileSystem:
         self.current_user = "root"
         self.current_dir = 0  # 根目录inode
 
+        # 用户家目录映射（新增）
+        self.user_home_dirs = {"root": 0}  # 用户名: 家目录inode_id
+
         # 打开文件表
         self.open_files: Dict[int, Dict] = {}  # fd -> {inode_id, offset, mode, path}
         self.next_fd = 0
 
         # 初始化根目录
         self._init_root_directory()
+        # 初始化用户家目录（新增）
+        self._init_user_homes()
 
     def _init_root_directory(self):
         """初始化根目录"""
@@ -215,6 +220,31 @@ class SimpleFileSystem:
         if block_idx is not None:
             root_inode.blocks.append(block_idx)
             root_inode.size = 2 * 256  # 两个目录项的大小估算
+
+    def _init_user_homes(self):
+        """初始化用户家目录（新增）"""
+        # 为root用户设置家目录（根目录）
+        self.user_home_dirs["root"] = 0
+
+        # 为/home目录（如果不存在则创建）
+        if not self._find_inode_by_path("/home"):
+            self.create_directory("/home")
+
+        # 为已存在的其他用户创建家目录
+        for username in list(self.users.keys()):
+            if username != "root":
+                home_path = f"/home/{username}"
+                # 创建用户家目录
+                if self.create_directory(home_path):
+                    home_inode_id = self._find_inode_by_path(home_path)
+                    if home_inode_id is not None:
+                        self.user_home_dirs[username] = home_inode_id
+                        # 设置家目录权限
+                        home_inode = self.inodes.get(home_inode_id)
+                        if home_inode:
+                            home_inode.owner = username
+                            home_inode.permissions = 0o700  # 只有所有者可读写执行
+                            home_inode.group = username
 
     def _allocate_block(self) -> Optional[int]:
         """分配一个空闲块"""
@@ -246,6 +276,7 @@ class SimpleFileSystem:
             # 放入缓存
             self.block_cache.put(block_idx, data)
             return data
+
         return bytearray(self.block_size)
 
     def _write_block(self, block_idx: int, data: bytes):
@@ -269,7 +300,7 @@ class SimpleFileSystem:
             id=inode_id,
             type=file_type,
             owner=self.current_user,
-            group=self.current_user,
+            group=self.current_user,  # 组设置为当前用户
             permissions=0o644 if file_type == FileType.FILE else 0o755
         )
         self.inodes[inode_id] = inode
@@ -330,6 +361,12 @@ class SimpleFileSystem:
                 return (inode.permissions & 0o200) != 0  # 检查写权限
             return (inode.permissions & 0o400) != 0  # 检查读权限
 
+        # 检查组权限
+        if inode.group == self.current_user:
+            if need_write:
+                return (inode.permissions & 0o020) != 0
+            return (inode.permissions & 0o040) != 0
+
         # 非所有者，检查其他用户权限
         if need_write:
             return (inode.permissions & 0o002) != 0
@@ -368,13 +405,11 @@ class SimpleFileSystem:
         for i, entry in enumerate(entries):
             if entry.name == name:
                 del entries[i]
-
                 # 更新目录inode
                 dir_inode = self.inodes.get(dir_inode_id)
                 if dir_inode:
                     dir_inode.update_modify_time()
                     dir_inode.size = len(entries) * 256
-
                 return True
 
         return False
@@ -383,12 +418,19 @@ class SimpleFileSystem:
         """用户登录"""
         if username in self.users and self.users[username] == password:
             self.current_user = username
+            # 切换到用户家目录（如果存在）
+            if username in self.user_home_dirs:
+                self.current_dir = self.user_home_dirs[username]
+            else:
+                # 如果用户没有家目录，使用根目录
+                self.current_dir = 0
             return True
         return False
 
     def logout(self):
         """用户登出"""
         self.current_user = "root"
+        self.current_dir = 0
         # 关闭所有打开的文件
         for fd in list(self.open_files.keys()):
             self.close_file(fd)
@@ -399,7 +441,21 @@ class SimpleFileSystem:
             return False
         if username in self.users:
             return False
+
         self.users[username] = password
+
+        # 为新用户创建家目录
+        home_path = f"/home/{username}"
+        if self.create_directory(home_path):
+            home_inode_id = self._find_inode_by_path(home_path)
+            if home_inode_id is not None:
+                self.user_home_dirs[username] = home_inode_id
+                # 设置家目录权限
+                home_inode = self.inodes.get(home_inode_id)
+                if home_inode:
+                    home_inode.owner = username
+                    home_inode.group = username
+                    home_inode.permissions = 0o700  # 只有所有者可读写执行
         return True
 
     def create_file(self, path: str) -> bool:
@@ -560,7 +616,6 @@ class SimpleFileSystem:
 
         result = []
         entries = self.directory_contents.get(target_inode_id, [])
-
         for entry in entries:
             inode = self.inodes.get(entry.inode_id)
             if inode:
@@ -570,8 +625,7 @@ class SimpleFileSystem:
                     'permissions': inode.get_permission_string(),
                     'size': inode.size,
                     'owner': inode.owner,
-                    'modified': time.strftime('%Y-%m-%d %H:%M',
-                                              time.localtime(inode.modified))
+                    'modified': time.strftime('%Y-%m-%d %H:%M', time.localtime(inode.modified))
                 })
 
         return result
@@ -609,7 +663,6 @@ class SimpleFileSystem:
 
         # 更新访问时间
         inode.update_access_time()
-
         return fd
 
     def close_file(self, fd: int) -> bool:
@@ -631,7 +684,6 @@ class SimpleFileSystem:
         inode_id = file_info['inode_id']
         offset = file_info['offset']
         inode = self.inodes.get(inode_id)
-
         if not inode or offset >= inode.size:
             return b""
 
@@ -644,13 +696,11 @@ class SimpleFileSystem:
         while bytes_read < read_size:
             block_idx = offset // self.block_size
             block_offset = offset % self.block_size
-
             if block_idx >= len(inode.blocks):
                 break
 
             actual_block = inode.blocks[block_idx]
-            bytes_in_block = min(self.block_size - block_offset,
-                                 read_size - bytes_read)
+            bytes_in_block = min(self.block_size - block_offset, read_size - bytes_read)
 
             # 读取块数据
             block_data = self._read_block(actual_block)
@@ -661,7 +711,6 @@ class SimpleFileSystem:
 
         # 更新偏移量
         file_info['offset'] = offset
-
         # 更新访问时间
         inode.update_access_time()
 
@@ -679,7 +728,6 @@ class SimpleFileSystem:
         inode_id = file_info['inode_id']
         offset = file_info['offset']
         inode = self.inodes.get(inode_id)
-
         if not inode:
             return False
 
@@ -698,10 +746,8 @@ class SimpleFileSystem:
         while bytes_written < len(data):
             block_idx = offset // self.block_size
             block_offset = offset % self.block_size
-
             actual_block = inode.blocks[block_idx]
-            bytes_in_block = min(self.block_size - block_offset,
-                                 len(data) - bytes_written)
+            bytes_in_block = min(self.block_size - block_offset, len(data) - bytes_written)
 
             # 读取现有数据（如果需要部分写入）
             if block_offset > 0 or bytes_in_block < self.block_size:
@@ -734,7 +780,6 @@ class SimpleFileSystem:
         file_info = self.open_files[fd]
         inode_id = file_info['inode_id']
         inode = self.inodes.get(inode_id)
-
         if not inode:
             return None
 
@@ -776,12 +821,9 @@ class SimpleFileSystem:
             'group': inode.group,
             'permissions': inode.get_permission_string(),
             'permissions_octal': oct(inode.permissions),
-            'created': time.strftime('%Y-%m-%d %H:%M:%S',
-                                     time.localtime(inode.created)),
-            'modified': time.strftime('%Y-%m-%d %H:%M:%S',
-                                      time.localtime(inode.modified)),
-            'accessed': time.strftime('%Y-%m-%d %H:%M:%S',
-                                      time.localtime(inode.accessed)),
+            'created': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.created)),
+            'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.modified)),
+            'accessed': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.accessed)),
             'link_count': inode.link_count
         }
 
@@ -807,7 +849,6 @@ class SimpleFileSystem:
         """获取磁盘使用情况"""
         used_blocks = sum(1 for free in self.free_blocks if not free)
         used_inodes = len(self.inodes)
-
         return {
             'total_blocks': self.block_count,
             'used_blocks': used_blocks,
@@ -834,6 +875,7 @@ class SimpleFileSystem:
                 for k, v in self.directory_contents.items()
             },
             'users': self.users,
+            'user_home_dirs': self.user_home_dirs,  # 新增：保存用户家目录映射
             'next_inode_id': self.next_inode_id,
             'current_user': self.current_user,
             'current_dir': self.current_dir
@@ -874,13 +916,13 @@ class SimpleFileSystem:
 
             # 恢复其他状态
             self.users = data['users']
+            self.user_home_dirs = data.get('user_home_dirs', {"root": 0})  # 新增
             self.next_inode_id = data['next_inode_id']
             self.current_user = data.get('current_user', 'root')
             self.current_dir = data.get('current_dir', 0)
 
             # 重新初始化块缓存
             self.block_cache.clear()
-
             return True
 
         except Exception as e:

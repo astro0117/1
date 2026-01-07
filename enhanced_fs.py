@@ -5,7 +5,6 @@
 2. 文件版本控制
 3. 文件加密/压缩
 """
-
 import os
 import time
 import json
@@ -28,11 +27,10 @@ except ImportError:
     Fernet = None
 
 from constants import *
-from base_fs import SimpleFileSystem, Inode, FileType, OperationType
+from base_fs import SimpleFileSystem, Inode, FileType
 
 
 # ========== 事务日志模块 ==========
-
 @dataclass
 class LogEntry:
     """事务日志条目"""
@@ -134,7 +132,6 @@ class TransactionLogger:
         )
 
         self.current_transaction['entries'].append(entry)
-
         # 立即写入日志文件（Write-Ahead Logging）
         self._append_to_log(entry)
 
@@ -152,7 +149,6 @@ class TransactionLogger:
 
         # 清理完成的事务
         self._cleanup_committed_logs()
-
         self.current_transaction = None
         self.active = False
         return True
@@ -248,7 +244,6 @@ class TransactionLogger:
 
 
 # ========== 版本控制模块 ==========
-
 class VersionManager:
     """版本控制系统"""
 
@@ -258,7 +253,6 @@ class VersionManager:
 
         # 创建版本存储目录
         os.makedirs(storage_dir, exist_ok=True)
-
         # 加载现有版本索引
         self._load_index()
 
@@ -268,7 +262,6 @@ class VersionManager:
         # 计算版本ID
         version_hash = hashlib.md5(content).hexdigest()
         version_id = f"{file_id}_{version_hash[:8]}_{int(time.time())}"
-
         version_info = {
             'id': version_id,
             'hash': version_hash,
@@ -289,7 +282,6 @@ class VersionManager:
         # 存储版本内容
         version_file = os.path.join(self.storage_dir, f"{version_id}.ver")
         stored_size = self._store_version(version_file, content, file_id)
-
         if stored_size == 0:
             return None
 
@@ -298,7 +290,6 @@ class VersionManager:
         # 更新版本索引
         if file_id not in self.version_index:
             self.version_index[file_id] = []
-
         self.version_index[file_id].append(version_info)
 
         # 限制版本数量
@@ -307,7 +298,6 @@ class VersionManager:
 
         # 保存索引
         self._save_index()
-
         return version_id
 
     def get_version(self, file_id: int, version_id: str) -> Optional[bytes]:
@@ -362,15 +352,12 @@ class VersionManager:
         try:
             # 使用gzip压缩存储
             compressed = zlib.compress(content, level=6)
-
             with open(filename, 'wb') as f:
                 # 添加版本标记
                 f.write(b'FSVER1.0')
                 # 存储压缩后的数据
                 f.write(compressed)
-
             return len(compressed) + 8  # 包括标记长度
-
         except Exception as e:
             print(f"存储版本失败: {e}")
             return 0
@@ -390,7 +377,6 @@ class VersionManager:
                 # 读取压缩数据
                 compressed = f.read()
                 return zlib.decompress(compressed)
-
         except Exception as e:
             print(f"加载版本失败: {e}")
             return None
@@ -407,7 +393,6 @@ class VersionManager:
                     )
                     if os.path.exists(version_file):
                         os.remove(version_file)
-
                 # 更新索引
                 self.version_index[file_id] = versions[-5:]
 
@@ -437,7 +422,6 @@ class VersionManager:
 
 
 # ========== 加密压缩模块 ==========
-
 class CryptoCompressor:
     """加密压缩处理器"""
 
@@ -485,7 +469,6 @@ class CryptoCompressor:
                 f.write(key)
         except Exception as e:
             print(f"保存加密密钥失败: {e}")
-
         return key
 
     def process_for_storage(self, data: bytes,
@@ -533,29 +516,27 @@ class CryptoCompressor:
         """处理数据以便读取"""
         result = data
 
-        # 解密
-        if decrypt and self.cipher:
-            try:
-                result = self.cipher.decrypt(result)
-            except:
-                # 可能不是用Fernet加密的，尝试模拟解密
-                if result.startswith(b'ENC:'):
-                    key = b'FS_SIMULATED_KEY'
-                    encrypted = result[4:]
-                    decrypted = bytearray()
-                    for i, byte in enumerate(encrypted):
-                        decrypted.append(byte ^ key[i % len(key)])
-                    result = bytes(decrypted)
-        elif decrypt and not self.cipher and result.startswith(b'ENC:'):
-            # 模拟解密
-            key = b'FS_SIMULATED_KEY'
-            encrypted = result[4:]
-            decrypted = bytearray()
-            for i, byte in enumerate(encrypted):
-                decrypted.append(byte ^ key[i % len(key)])
-            result = bytes(decrypted)
+        # 解密逻辑：优先处理模拟加密，然后尝试Fernet解密
+        if decrypt:
+            # 首先检查是否是模拟加密（有 ENC: 标记）
+            if result.startswith(b'ENC:'):
+                # 模拟解密
+                key = b'FS_SIMULATED_KEY'
+                encrypted = result[4:]
+                decrypted = bytearray()
+                for i, byte in enumerate(encrypted):
+                    decrypted.append(byte ^ key[i % len(key)])
+                result = bytes(decrypted)
+            # 然后尝试Fernet解密（如果cipher可用）
+            elif self.cipher:
+                try:
+                    # 尝试Fernet解密
+                    result = self.cipher.decrypt(result)
+                except:
+                    # Fernet解密失败，保持原数据
+                    pass
 
-        # 解压
+        # 解压逻辑：检查是否有压缩标记
         if decompress and result.startswith(b'COMP:'):
             try:
                 result = zlib.decompress(result[5:])
@@ -579,7 +560,6 @@ class CryptoCompressor:
 
 
 # ========== 增强型文件系统主类 ==========
-
 class EnhancedFileSystem(SimpleFileSystem):
     """增强型文件系统：集成所有扩展功能"""
 
@@ -588,7 +568,6 @@ class EnhancedFileSystem(SimpleFileSystem):
                  enable_logging: bool = True,
                  enable_versions: bool = True,
                  enable_crypto: bool = True):
-
         super().__init__(disk_size_mb, block_size_kb)
 
         # 扩展功能开关
@@ -625,7 +604,6 @@ class EnhancedFileSystem(SimpleFileSystem):
         }
 
     # ---------- 覆盖父类方法以集成扩展功能 ----------
-
     def create_file(self, path: str) -> bool:
         """创建文件（带事务日志）"""
         self.operation_stats['creates'] += 1
@@ -640,15 +618,12 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         try:
             result = super().create_file(path)
-
             if result and self.enable_logging:
                 self.transaction_logger.commit()
                 print(f"文件创建成功: {path} (事务已提交)")
             elif not result and self.enable_logging:
                 self.transaction_logger.rollback()
-
             return result
-
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -673,16 +648,13 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         try:
             result = super().delete(path)
-
             if result:
                 # 清理版本历史
                 if self.enable_versions and inode_id:
                     self.version_manager.delete_versions(inode_id)
-
                 # 清理属性
                 if inode_id in self.file_attributes:
                     del self.file_attributes[inode_id]
-
                 # 从特殊文件集合中移除
                 if inode_id in self.encrypted_files:
                     self.encrypted_files.remove(inode_id)
@@ -695,9 +667,7 @@ class EnhancedFileSystem(SimpleFileSystem):
             else:
                 if self.enable_logging:
                     self.transaction_logger.rollback()
-
             return result
-
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -719,14 +689,11 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         try:
             fd = super().open_file(path, mode)
-
             if fd is not None and self.enable_logging:
                 self.transaction_logger.commit()
             elif self.enable_logging:
                 self.transaction_logger.rollback()
-
             return fd
-
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -780,11 +747,11 @@ class EnhancedFileSystem(SimpleFileSystem):
                     data, encrypt=encrypt, compress=compress
                 )
 
-                # 记录文件加密/压缩状态
-                if encrypt:
-                    self.encrypted_files.add(inode_id)
-                if compress:
-                    self.compressed_files.add(inode_id)
+            # 记录文件加密/压缩状态
+            if encrypt:
+                self.encrypted_files.add(inode_id)
+            if compress:
+                self.compressed_files.add(inode_id)
 
             # 调用父类方法写入处理后的数据
             result = super().write_file(fd, processed_data)
@@ -800,7 +767,6 @@ class EnhancedFileSystem(SimpleFileSystem):
                 self.transaction_logger.rollback()
 
             return result
-
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -815,7 +781,6 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         # 先读取原始数据
         raw_data = super().read_file(fd, size)
-
         if raw_data is None or not raw_data:
             return raw_data
 
@@ -835,7 +800,6 @@ class EnhancedFileSystem(SimpleFileSystem):
         return raw_data
 
     # ---------- 新增功能方法 ----------
-
     def restore_version(self, path: str, version_id: str) -> bool:
         """恢复到指定版本"""
         if not self.enable_versions:
@@ -870,7 +834,6 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         if result:
             print(f"已恢复到版本 {version_id}")
-
         return result
 
     def list_file_versions(self, path: str) -> List[Dict]:
@@ -970,7 +933,6 @@ class EnhancedFileSystem(SimpleFileSystem):
     def get_system_stats(self) -> Dict:
         """获取系统统计信息"""
         base_stats = super().get_disk_usage()
-
         stats = {
             'disk_usage': base_stats,
             'operation_stats': self.operation_stats,
@@ -1013,7 +975,6 @@ class EnhancedFileSystem(SimpleFileSystem):
         if not self.enable_logging:
             print("事务日志功能未启用")
             return 0
-
         return self.transaction_logger.recover()
 
     def export_versions(self, path: str, export_dir: str) -> bool:
@@ -1056,7 +1017,6 @@ class EnhancedFileSystem(SimpleFileSystem):
         return exported > 0
 
     # ---------- 私有辅助方法 ----------
-
     def _read_entire_file_for_version(self, fd: int) -> Optional[bytes]:
         """读取文件的整个当前内容（用于创建版本）"""
         if fd not in self.open_files:
@@ -1072,7 +1032,6 @@ class EnhancedFileSystem(SimpleFileSystem):
         content = bytearray()
         inode_id = self.open_files[fd]['inode_id']
         inode = self.inodes.get(inode_id)
-
         if not inode:
             return None
 
@@ -1091,13 +1050,10 @@ class EnhancedFileSystem(SimpleFileSystem):
             # 读取当前块
             actual_block = inode.blocks[block_idx]
             bytes_in_block = min(self.block_size - block_offset, total_size - bytes_read)
-
             block_data = self._read_block(actual_block)
             content.extend(block_data[block_offset:block_offset + bytes_in_block])
-
             bytes_read += bytes_in_block
 
         # 恢复位置
         self.seek_file(fd, original_offset)
-
         return bytes(content)

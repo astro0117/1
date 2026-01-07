@@ -2,7 +2,6 @@
 """
 文件系统常量定义
 """
-
 from enum import IntEnum
 
 # 文件类型
@@ -29,12 +28,12 @@ class OperationType(IntEnum):
     CLOSE_FILE = 9
 
 # 系统常量
-DISK_SIZE_MB = 10            # 虚拟磁盘大小 (MB)
-BLOCK_SIZE_KB = 4           # 块大小 (KB)
-MAX_FILENAME = 255          # 最大文件名长度
-MAX_USERS = 100             # 最大用户数
-MAX_OPEN_FILES = 20         # 最大打开文件数
-VERSION_LIMIT = 10          # 每个文件最大版本数
+DISK_SIZE_MB = 10  # 虚拟磁盘大小 (MB)
+BLOCK_SIZE_KB = 4  # 块大小 (KB)
+MAX_FILENAME = 255  # 最大文件名长度
+MAX_USERS = 100  # 最大用户数
+MAX_OPEN_FILES = 20  # 最大打开文件数
+VERSION_LIMIT = 10  # 每个文件最大版本数
 TRANSACTION_LOG_FILE = ".fs_transaction.log"  # 事务日志文件
-VERSION_STORAGE_DIR = ".versions"             # 版本存储目录
-ENCRYPTION_KEY_FILE = ".fs_encryption_key"    # 加密密钥文件
+VERSION_STORAGE_DIR = ".versions"  # 版本存储目录
+ENCRYPTION_KEY_FILE = ".fs_encryption_key"  # 加密密钥文件
