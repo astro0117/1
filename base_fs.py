@@ -3,7 +3,6 @@
 基础文件系统实现
 包含：虚拟磁盘、inode、目录、基本文件操作
 """
-
 import os
 import time
 import json
@@ -11,8 +10,7 @@ import hashlib
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any, Tuple
 from collections import OrderedDict
-
-from constants import FileType, Permission, MAX_FILENAME, MAX_OPEN_FILES
+from constants import FileType, MAX_FILENAME, MAX_OPEN_FILES
 
 
 @dataclass
@@ -53,10 +51,12 @@ class Inode:
         result += 'r' if (perm & 0o400) else '-'
         result += 'w' if (perm & 0o200) else '-'
         result += 'x' if (perm & 0o100) else '-'
+
         # 组权限
         result += 'r' if (perm & 0o040) else '-'
         result += 'w' if (perm & 0o020) else '-'
         result += 'x' if (perm & 0o010) else '-'
+
         # 其他用户权限
         result += 'r' if (perm & 0o004) else '-'
         result += 'w' if (perm & 0o002) else '-'
@@ -246,6 +246,7 @@ class SimpleFileSystem:
             # 放入缓存
             self.block_cache.put(block_idx, data)
             return data
+
         return bytearray(self.block_size)
 
     def _write_block(self, block_idx: int, data: bytes):
@@ -368,13 +369,11 @@ class SimpleFileSystem:
         for i, entry in enumerate(entries):
             if entry.name == name:
                 del entries[i]
-
                 # 更新目录inode
                 dir_inode = self.inodes.get(dir_inode_id)
                 if dir_inode:
                     dir_inode.update_modify_time()
                     dir_inode.size = len(entries) * 256
-
                 return True
 
         return False
@@ -560,7 +559,6 @@ class SimpleFileSystem:
 
         result = []
         entries = self.directory_contents.get(target_inode_id, [])
-
         for entry in entries:
             inode = self.inodes.get(entry.inode_id)
             if inode:
@@ -570,8 +568,7 @@ class SimpleFileSystem:
                     'permissions': inode.get_permission_string(),
                     'size': inode.size,
                     'owner': inode.owner,
-                    'modified': time.strftime('%Y-%m-%d %H:%M',
-                                              time.localtime(inode.modified))
+                    'modified': time.strftime('%Y-%m-%d %H:%M', time.localtime(inode.modified))
                 })
 
         return result
@@ -609,7 +606,6 @@ class SimpleFileSystem:
 
         # 更新访问时间
         inode.update_access_time()
-
         return fd
 
     def close_file(self, fd: int) -> bool:
@@ -631,7 +627,6 @@ class SimpleFileSystem:
         inode_id = file_info['inode_id']
         offset = file_info['offset']
         inode = self.inodes.get(inode_id)
-
         if not inode or offset >= inode.size:
             return b""
 
@@ -644,13 +639,11 @@ class SimpleFileSystem:
         while bytes_read < read_size:
             block_idx = offset // self.block_size
             block_offset = offset % self.block_size
-
             if block_idx >= len(inode.blocks):
                 break
 
             actual_block = inode.blocks[block_idx]
-            bytes_in_block = min(self.block_size - block_offset,
-                                 read_size - bytes_read)
+            bytes_in_block = min(self.block_size - block_offset, read_size - bytes_read)
 
             # 读取块数据
             block_data = self._read_block(actual_block)
@@ -661,7 +654,6 @@ class SimpleFileSystem:
 
         # 更新偏移量
         file_info['offset'] = offset
-
         # 更新访问时间
         inode.update_access_time()
 
@@ -679,7 +671,6 @@ class SimpleFileSystem:
         inode_id = file_info['inode_id']
         offset = file_info['offset']
         inode = self.inodes.get(inode_id)
-
         if not inode:
             return False
 
@@ -698,10 +689,8 @@ class SimpleFileSystem:
         while bytes_written < len(data):
             block_idx = offset // self.block_size
             block_offset = offset % self.block_size
-
             actual_block = inode.blocks[block_idx]
-            bytes_in_block = min(self.block_size - block_offset,
-                                 len(data) - bytes_written)
+            bytes_in_block = min(self.block_size - block_offset, len(data) - bytes_written)
 
             # 读取现有数据（如果需要部分写入）
             if block_offset > 0 or bytes_in_block < self.block_size:
@@ -734,7 +723,6 @@ class SimpleFileSystem:
         file_info = self.open_files[fd]
         inode_id = file_info['inode_id']
         inode = self.inodes.get(inode_id)
-
         if not inode:
             return None
 
@@ -776,12 +764,9 @@ class SimpleFileSystem:
             'group': inode.group,
             'permissions': inode.get_permission_string(),
             'permissions_octal': oct(inode.permissions),
-            'created': time.strftime('%Y-%m-%d %H:%M:%S',
-                                     time.localtime(inode.created)),
-            'modified': time.strftime('%Y-%m-%d %H:%M:%S',
-                                      time.localtime(inode.modified)),
-            'accessed': time.strftime('%Y-%m-%d %H:%M:%S',
-                                      time.localtime(inode.accessed)),
+            'created': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.created)),
+            'modified': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.modified)),
+            'accessed': time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(inode.accessed)),
             'link_count': inode.link_count
         }
 
@@ -807,7 +792,6 @@ class SimpleFileSystem:
         """获取磁盘使用情况"""
         used_blocks = sum(1 for free in self.free_blocks if not free)
         used_inodes = len(self.inodes)
-
         return {
             'total_blocks': self.block_count,
             'used_blocks': used_blocks,
@@ -880,7 +864,6 @@ class SimpleFileSystem:
 
             # 重新初始化块缓存
             self.block_cache.clear()
-
             return True
 
         except Exception as e:
