@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
 增强型文件系统：集成三大扩展功能
+
 1. 事务日志与崩溃恢复
 2. 文件版本控制
 3. 文件加密/压缩
 """
+
 import os
 import time
 import json
@@ -31,6 +33,7 @@ from base_fs import SimpleFileSystem, Inode, FileType
 
 
 # ========== 事务日志模块 ==========
+
 @dataclass
 class LogEntry:
     """事务日志条目"""
@@ -244,6 +247,7 @@ class TransactionLogger:
 
 
 # ========== 版本控制模块 ==========
+
 class VersionManager:
     """版本控制系统"""
 
@@ -253,6 +257,7 @@ class VersionManager:
 
         # 创建版本存储目录
         os.makedirs(storage_dir, exist_ok=True)
+
         # 加载现有版本索引
         self._load_index()
 
@@ -262,6 +267,7 @@ class VersionManager:
         # 计算版本ID
         version_hash = hashlib.md5(content).hexdigest()
         version_id = f"{file_id}_{version_hash[:8]}_{int(time.time())}"
+
         version_info = {
             'id': version_id,
             'hash': version_hash,
@@ -275,7 +281,8 @@ class VersionManager:
         # 检查是否与上一个版本相同（避免重复存储）
         if file_id in self.version_index and self.version_index[file_id]:
             last_version = self.version_index[file_id][-1]
-            if last_version['hash'] == version_hash:
+            # 修复：比较哈希值而不是内容
+            if last_version.get('hash') == version_hash:
                 # 内容相同，不创建新版本
                 return last_version['id']
 
@@ -393,6 +400,7 @@ class VersionManager:
                     )
                     if os.path.exists(version_file):
                         os.remove(version_file)
+
                 # 更新索引
                 self.version_index[file_id] = versions[-5:]
 
@@ -422,6 +430,7 @@ class VersionManager:
 
 
 # ========== 加密压缩模块 ==========
+
 class CryptoCompressor:
     """加密压缩处理器"""
 
@@ -560,6 +569,7 @@ class CryptoCompressor:
 
 
 # ========== 增强型文件系统主类 ==========
+
 class EnhancedFileSystem(SimpleFileSystem):
     """增强型文件系统：集成所有扩展功能"""
 
@@ -604,6 +614,7 @@ class EnhancedFileSystem(SimpleFileSystem):
         }
 
     # ---------- 覆盖父类方法以集成扩展功能 ----------
+
     def create_file(self, path: str) -> bool:
         """创建文件（带事务日志）"""
         self.operation_stats['creates'] += 1
@@ -652,9 +663,11 @@ class EnhancedFileSystem(SimpleFileSystem):
                 # 清理版本历史
                 if self.enable_versions and inode_id:
                     self.version_manager.delete_versions(inode_id)
+
                 # 清理属性
                 if inode_id in self.file_attributes:
                     del self.file_attributes[inode_id]
+
                 # 从特殊文件集合中移除
                 if inode_id in self.encrypted_files:
                     self.encrypted_files.remove(inode_id)
@@ -800,6 +813,7 @@ class EnhancedFileSystem(SimpleFileSystem):
         return raw_data
 
     # ---------- 新增功能方法 ----------
+
     def restore_version(self, path: str, version_id: str) -> bool:
         """恢复到指定版本"""
         if not self.enable_versions:
@@ -834,6 +848,7 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         if result:
             print(f"已恢复到版本 {version_id}")
+
         return result
 
     def list_file_versions(self, path: str) -> List[Dict]:
@@ -933,6 +948,7 @@ class EnhancedFileSystem(SimpleFileSystem):
     def get_system_stats(self) -> Dict:
         """获取系统统计信息"""
         base_stats = super().get_disk_usage()
+
         stats = {
             'disk_usage': base_stats,
             'operation_stats': self.operation_stats,
@@ -975,6 +991,7 @@ class EnhancedFileSystem(SimpleFileSystem):
         if not self.enable_logging:
             print("事务日志功能未启用")
             return 0
+
         return self.transaction_logger.recover()
 
     def export_versions(self, path: str, export_dir: str) -> bool:
@@ -1017,6 +1034,7 @@ class EnhancedFileSystem(SimpleFileSystem):
         return exported > 0
 
     # ---------- 私有辅助方法 ----------
+
     def _read_entire_file_for_version(self, fd: int) -> Optional[bytes]:
         """读取文件的整个当前内容（用于创建版本）"""
         if fd not in self.open_files:
@@ -1050,10 +1068,13 @@ class EnhancedFileSystem(SimpleFileSystem):
             # 读取当前块
             actual_block = inode.blocks[block_idx]
             bytes_in_block = min(self.block_size - block_offset, total_size - bytes_read)
+
             block_data = self._read_block(actual_block)
             content.extend(block_data[block_offset:block_offset + bytes_in_block])
+
             bytes_read += bytes_in_block
 
         # 恢复位置
         self.seek_file(fd, original_offset)
+
         return bytes(content)
