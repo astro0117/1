@@ -2,15 +2,18 @@
 """
 增强文件系统交互式shell
 """
+
 import sys
 import os
 import cmd
 import shlex
+import time
 from enhanced_fs import EnhancedFileSystem
 
 
 class FileSystemShell(cmd.Cmd):
     """文件系统交互式shell"""
+
     intro = "欢迎使用增强型文件系统 Shell! 输入 'help' 获取命令列表。"
     prompt = "fs> "
 
@@ -143,6 +146,54 @@ class FileSystemShell(cmd.Cmd):
         except (ValueError, TypeError):
             print("用法: chmod path mode (如: chmod myfile 644)")
 
+    def do_copy(self, args):
+        """复制文件: copy source destination [--no-perms] [--no-timestamps]"""
+        try:
+            parts = args.split()
+            if len(parts) < 2:
+                print("用法: copy source destination [--no-perms] [--no-timestamps]")
+                return
+
+            src = parts[0]
+            dst = parts[1]
+
+            # 解析选项
+            preserve_permissions = True
+            preserve_timestamps = True
+
+            if '--no-perms' in parts:
+                preserve_permissions = False
+            if '--no-timestamps' in parts:
+                preserve_timestamps = False
+
+            if self.fs.copy_file(src, dst, preserve_permissions, preserve_timestamps):
+                print(f"复制成功: {src} -> {dst}")
+            else:
+                print(f"复制失败: {src} -> {dst}")
+        except Exception as e:
+            print(f"复制出错: {e}")
+
+    def do_merge(self, args):
+        """合并文件: merge file1 file2 output_file [separator]"""
+        try:
+            parts = args.split()
+            if len(parts) == 3:
+                file1, file2, output = parts
+                separator = "\n"  # 默认换行符分隔
+            elif len(parts) == 4:
+                file1, file2, output, sep = parts
+                separator = sep
+            else:
+                print("用法: merge file1 file2 output_file [separator]")
+                return
+
+            if self.fs.merge_files(file1, file2, output, separator.encode()):
+                print(f"合并成功: {file1} + {file2} -> {output}")
+            else:
+                print(f"合并失败: {file1} + {file2} -> {output}")
+        except Exception as e:
+            print(f"合并出错: {e}")
+
     def do_encrypt(self, args):
         """启用/禁用加密: encrypt filename [on|off]"""
         try:
@@ -211,7 +262,6 @@ class FileSystemShell(cmd.Cmd):
     def do_stats(self, args):
         """查看系统统计"""
         stats = self.fs.get_system_stats()
-
         print("=" * 60)
         print("系统统计信息")
         print("=" * 60)
@@ -223,7 +273,8 @@ class FileSystemShell(cmd.Cmd):
         print(f"  已使用: {du['used_size_mb']:.1f} MB")
         print(f"  空闲: {du['total_size_mb'] - du['used_size_mb']:.1f} MB")
         print(
-            f"  块使用: {du['used_blocks']}/{du['total_blocks']} ({(du['used_blocks'] / du['total_blocks'] * 100):.1f}%)")
+            f"  块使用: {du['used_blocks']}/{du['total_blocks']} "
+            f"({(du['used_blocks'] / du['total_blocks'] * 100):.1f}%)")
 
         # 文件统计
         print("\n📁 文件统计:")
@@ -312,23 +363,27 @@ class FileSystemShell(cmd.Cmd):
         """显示帮助信息"""
         super().do_help(args)
         print("\n📋 主要命令:")
-        print("  login/logout       - 登录/登出")
-        print("  mkdir/touch        - 创建目录/文件")
-        print("  ls/cat             - 列出目录/查看文件")
-        print("  write/rm           - 写入/删除文件")
-        print("  info/chmod         - 查看信息/修改权限")
-        print("  encrypt/compress   - 加密/压缩文件")
-        print("  versions/restore   - 版本管理")
-        print("  stats              - 系统统计")
-        print("  save/load          - 保存/加载文件系统")
-        print("  recover            - 崩溃恢复")
-        print("  exit/quit          - 退出系统")
+        print(" login/logout - 登录/登出")
+        print(" mkdir/touch - 创建目录/文件")
+        print(" ls/cat - 列出目录/查看文件")
+        print(" write/rm - 写入/删除文件")
+        print(" info/chmod - 查看信息/修改权限")
+        print(" copy/merge - 复制/合并文件")  # 新增
+        print(" encrypt/compress - 加密/压缩文件")
+        print(" versions/restore - 版本管理")
+        print(" stats - 系统统计")
+        print(" save/load - 保存/加载文件系统")
+        print(" recover - 崩溃恢复")
+        print(" exit/quit - 退出系统")
+        print("\n📖 示例:")
+        print("  copy file1.txt file2.txt")
+        print("  merge part1.txt part2.txt combined.txt")
+        print("  copy data.txt backup.txt --no-perms")
 
 
 def main():
     """主函数"""
     import time
-
     shell = FileSystemShell()
     try:
         shell.cmdloop()

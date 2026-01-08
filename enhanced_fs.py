@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 # 尝试导入加密库，如果失败则使用模拟实现
 try:
     from cryptography.fernet import Fernet
-
     CRYPTO_AVAILABLE = True
 except ImportError:
     print("警告: cryptography库未安装，加密功能将使用模拟实现")
@@ -30,7 +29,6 @@ except ImportError:
 
 from constants import *
 from base_fs import SimpleFileSystem, Inode, FileType
-
 
 # ========== 事务日志模块 ==========
 
@@ -92,7 +90,6 @@ class LogEntry:
                 deserialized[k] = v
         return deserialized
 
-
 class TransactionLogger:
     """事务日志管理器"""
 
@@ -103,7 +100,7 @@ class TransactionLogger:
 
         # 创建日志文件目录
         os.makedirs(os.path.dirname(log_file) if os.path.dirname(log_file) else '.',
-                    exist_ok=True)
+                   exist_ok=True)
 
     def begin_transaction(self, transaction_id: str = None):
         """开始新事务"""
@@ -135,6 +132,7 @@ class TransactionLogger:
         )
 
         self.current_transaction['entries'].append(entry)
+
         # 立即写入日志文件（Write-Ahead Logging）
         self._append_to_log(entry)
 
@@ -152,6 +150,7 @@ class TransactionLogger:
 
         # 清理完成的事务
         self._cleanup_committed_logs()
+
         self.current_transaction = None
         self.active = False
         return True
@@ -167,6 +166,7 @@ class TransactionLogger:
             self._update_log_status(entry.id, "rolled_back")
 
         print(f"事务回滚: {self.current_transaction['id']}")
+
         self.current_transaction = None
         self.active = False
         return True
@@ -197,7 +197,6 @@ class TransactionLogger:
 
             # 清理日志文件
             open(self.log_file, 'w').close()
-
         except Exception as e:
             print(f"恢复过程中出错: {e}")
 
@@ -241,10 +240,8 @@ class TransactionLogger:
 
                 with open(self.log_file, 'w') as f:
                     f.writelines(pending_lines)
-
             except Exception as e:
                 print(f"清理日志失败: {e}")
-
 
 # ========== 版本控制模块 ==========
 
@@ -262,7 +259,7 @@ class VersionManager:
         self._load_index()
 
     def create_version(self, file_id: int, content: bytes,
-                       author: str, comment: str = "") -> Optional[str]:
+                      author: str, comment: str = "") -> Optional[str]:
         """创建文件新版本"""
         # 计算版本ID
         version_hash = hashlib.md5(content).hexdigest()
@@ -297,6 +294,7 @@ class VersionManager:
         # 更新版本索引
         if file_id not in self.version_index:
             self.version_index[file_id] = []
+
         self.version_index[file_id].append(version_info)
 
         # 限制版本数量
@@ -305,6 +303,7 @@ class VersionManager:
 
         # 保存索引
         self._save_index()
+
         return version_id
 
     def get_version(self, file_id: int, version_id: str) -> Optional[bytes]:
@@ -428,7 +427,6 @@ class VersionManager:
                 print(f"加载版本索引失败: {e}")
                 self.version_index = {}
 
-
 # ========== 加密压缩模块 ==========
 
 class CryptoCompressor:
@@ -478,11 +476,12 @@ class CryptoCompressor:
                 f.write(key)
         except Exception as e:
             print(f"保存加密密钥失败: {e}")
+
         return key
 
     def process_for_storage(self, data: bytes,
-                            encrypt: bool = False,
-                            compress: bool = False) -> bytes:
+                           encrypt: bool = False,
+                           compress: bool = False) -> bytes:
         """处理数据以便存储"""
         original_size = len(data)
         result = data
@@ -520,8 +519,8 @@ class CryptoCompressor:
         return result
 
     def process_for_retrieval(self, data: bytes,
-                              decrypt: bool = False,
-                              decompress: bool = False) -> bytes:
+                             decrypt: bool = False,
+                             decompress: bool = False) -> bytes:
         """处理数据以便读取"""
         result = data
 
@@ -567,7 +566,6 @@ class CryptoCompressor:
             'encryption_available': CRYPTO_AVAILABLE and Fernet is not None
         }
 
-
 # ========== 增强型文件系统主类 ==========
 
 class EnhancedFileSystem(SimpleFileSystem):
@@ -610,7 +608,9 @@ class EnhancedFileSystem(SimpleFileSystem):
             'writes': 0,
             'opens': 0,
             'creates': 0,
-            'deletes': 0
+            'deletes': 0,
+            'copies': 0,     # 新增：复制操作统计
+            'merges': 0      # 新增：合并操作统计
         }
 
     # ---------- 覆盖父类方法以集成扩展功能 ----------
@@ -635,6 +635,7 @@ class EnhancedFileSystem(SimpleFileSystem):
             elif not result and self.enable_logging:
                 self.transaction_logger.rollback()
             return result
+
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -681,6 +682,7 @@ class EnhancedFileSystem(SimpleFileSystem):
                 if self.enable_logging:
                     self.transaction_logger.rollback()
             return result
+
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -707,6 +709,7 @@ class EnhancedFileSystem(SimpleFileSystem):
             elif self.enable_logging:
                 self.transaction_logger.rollback()
             return fd
+
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -714,9 +717,9 @@ class EnhancedFileSystem(SimpleFileSystem):
             return None
 
     def write_file(self, fd: int, data: bytes,
-                   create_version: bool = True,
-                   encrypt: bool = False,
-                   compress: bool = False) -> bool:
+                  create_version: bool = True,
+                  encrypt: bool = False,
+                  compress: bool = False) -> bool:
         """写入文件（支持版本控制、加密、压缩）"""
         self.operation_stats['writes'] += 1
 
@@ -768,7 +771,6 @@ class EnhancedFileSystem(SimpleFileSystem):
 
             # 调用父类方法写入处理后的数据
             result = super().write_file(fd, processed_data)
-
             if result and self.enable_logging:
                 self.transaction_logger.commit()
                 if encrypt or compress:
@@ -780,6 +782,7 @@ class EnhancedFileSystem(SimpleFileSystem):
                 self.transaction_logger.rollback()
 
             return result
+
         except Exception as e:
             if self.enable_logging:
                 self.transaction_logger.rollback()
@@ -787,8 +790,8 @@ class EnhancedFileSystem(SimpleFileSystem):
             return False
 
     def read_file(self, fd: int, size: int,
-                  decrypt: bool = True,
-                  decompress: bool = True) -> Optional[bytes]:
+                 decrypt: bool = True,
+                 decompress: bool = True) -> Optional[bytes]:
         """读取文件（自动解密解压）"""
         self.operation_stats['reads'] += 1
 
@@ -812,7 +815,353 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         return raw_data
 
-    # ---------- 新增功能方法 ----------
+    # ---------- 新增：复制和合并功能 ----------
+
+    def copy_file(self, src_path: str, dst_path: str,
+                 preserve_permissions: bool = True,
+                 preserve_timestamps: bool = True) -> bool:
+        """复制文件"""
+        self.operation_stats['copies'] += 1
+
+        if self.enable_logging:
+            self.transaction_logger.begin_transaction()
+            log_id = self.transaction_logger.log_operation(
+                OperationType.COPY_FILE,
+                src_path=src_path,
+                dst_path=dst_path,
+                user=self.current_user
+            )
+
+        try:
+            # 1. 检查源文件是否存在
+            src_inode_id = self._find_inode_by_path(src_path)
+            if src_inode_id is None:
+                print(f"源文件不存在: {src_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            src_inode = self.inodes.get(src_inode_id)
+            if not src_inode or src_inode.type != FileType.FILE:
+                print(f"源路径不是文件: {src_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 2. 检查源文件读权限
+            if not self._check_permission(src_inode_id, need_write=False):
+                print(f"没有读取权限: {src_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 3. 检查目标路径
+            # 解析目标路径的目录和文件名
+            if "/" in dst_path:
+                dst_dir, dst_name = dst_path.rsplit("/", 1)
+                if dst_dir == "":
+                    dst_dir = "/"
+            else:
+                dst_dir = "."
+                dst_name = dst_path
+
+            # 检查目标目录是否存在
+            dst_dir_inode_id = self._find_inode_by_path(dst_dir)
+            if dst_dir_inode_id is None:
+                print(f"目标目录不存在: {dst_dir}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 检查目标目录写权限
+            if not self._check_permission(dst_dir_inode_id, need_write=True):
+                print(f"没有写入目标目录的权限: {dst_dir}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 4. 如果目标文件已存在，先删除（模拟覆盖）
+            dst_inode_id = self._find_inode_by_path(dst_path)
+            if dst_inode_id is not None:
+                if not self._check_permission(dst_inode_id, need_write=True):
+                    print(f"无法覆盖目标文件，无写权限: {dst_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+                # 删除已存在的文件
+                if not super().delete(dst_path):
+                    print(f"无法删除已存在的目标文件: {dst_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+
+            # 5. 创建目标文件
+            if not self.create_file(dst_path):
+                print(f"创建目标文件失败: {dst_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 获取新文件的inode
+            new_inode_id = self._find_inode_by_path(dst_path)
+            if new_inode_id is None:
+                print(f"创建文件后无法找到inode: {dst_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            new_inode = self.inodes.get(new_inode_id)
+
+            # 6. 读取源文件内容
+            src_fd = self.open_file(src_path, "r")
+            if src_fd is None:
+                print(f"无法打开源文件进行读取: {src_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 读取全部内容
+            content = bytearray()
+            while True:
+                chunk = self.read_file(src_fd, 4096)
+                if not chunk:
+                    break
+                content.extend(chunk)
+            self.close_file(src_fd)
+
+            # 7. 写入目标文件
+            dst_fd = self.open_file(dst_path, "w")
+            if dst_fd is None:
+                print(f"无法打开目标文件进行写入: {dst_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 检查是否需要加密/压缩（继承源文件的设置）
+            encrypt = src_inode_id in self.encrypted_files
+            compress = src_inode_id in self.compressed_files
+
+            success = self.write_file(
+                dst_fd, bytes(content),
+                create_version=True,
+                encrypt=encrypt,
+                compress=compress
+            )
+            self.close_file(dst_fd)
+
+            if not success:
+                print("写入目标文件失败")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 8. 可选：保持权限和时间戳
+            if preserve_permissions:
+                new_inode.permissions = src_inode.permissions
+                new_inode.owner = src_inode.owner
+                new_inode.group = src_inode.group
+
+            if preserve_timestamps:
+                new_inode.created = src_inode.created
+                new_inode.modified = src_inode.modified
+                new_inode.accessed = src_inode.accessed
+
+            # 9. 复制扩展属性
+            if src_inode.xattrs:
+                new_inode.xattrs = src_inode.xattrs.copy()
+
+            # 10. 提交事务
+            if self.enable_logging:
+                self.transaction_logger.commit()
+
+            print(f"文件复制成功: {src_path} -> {dst_path}")
+            return True
+
+        except Exception as e:
+            print(f"复制文件时出错: {e}")
+            if self.enable_logging:
+                self.transaction_logger.rollback()
+            return False
+
+    def merge_files(self, file1_path: str, file2_path: str,
+                   output_path: str, separator: bytes = b"\n") -> bool:
+        """合并两个文件"""
+        self.operation_stats['merges'] += 1
+
+        if self.enable_logging:
+            self.transaction_logger.begin_transaction()
+            log_id = self.transaction_logger.log_operation(
+                OperationType.MERGE_FILES,
+                file1_path=file1_path,
+                file2_path=file2_path,
+                output_path=output_path,
+                user=self.current_user
+            )
+
+        try:
+            # 1. 检查输入文件是否存在且可读
+            for file_path in [file1_path, file2_path]:
+                inode_id = self._find_inode_by_path(file_path)
+                if inode_id is None:
+                    print(f"文件不存在: {file_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+
+                if not self._check_permission(inode_id, need_write=False):
+                    print(f"没有读取权限: {file_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+
+            # 2. 检查输出路径
+            # 解析输出路径的目录和文件名
+            if "/" in output_path:
+                out_dir, out_name = output_path.rsplit("/", 1)
+                if out_dir == "":
+                    out_dir = "/"
+            else:
+                out_dir = "."
+                out_name = output_path
+
+            # 检查输出目录是否存在
+            out_dir_inode_id = self._find_inode_by_path(out_dir)
+            if out_dir_inode_id is None:
+                print(f"输出目录不存在: {out_dir}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 检查输出目录写权限
+            if not self._check_permission(out_dir_inode_id, need_write=True):
+                print(f"没有写入输出目录的权限: {out_dir}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 3. 如果输出文件已存在，先删除
+            out_inode_id = self._find_inode_by_path(output_path)
+            if out_inode_id is not None:
+                if not self._check_permission(out_inode_id, need_write=True):
+                    print(f"无法覆盖输出文件，无写权限: {output_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+                # 删除已存在的文件
+                if not super().delete(output_path):
+                    print(f"无法删除已存在的输出文件: {output_path}")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+
+            # 4. 创建输出文件
+            if not self.create_file(output_path):
+                print(f"创建输出文件失败: {output_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 5. 打开输出文件
+            out_fd = self.open_file(output_path, "w")
+            if out_fd is None:
+                print(f"无法打开输出文件进行写入: {output_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 6. 读取并写入第一个文件
+            fd1 = self.open_file(file1_path, "r")
+            if fd1 is None:
+                self.close_file(out_fd)
+                print(f"无法打开第一个文件: {file1_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 复制第一个文件内容
+            while True:
+                chunk = self.read_file(fd1, 4096)
+                if not chunk:
+                    break
+                if not self.write_file(out_fd, chunk, create_version=False):
+                    self.close_file(fd1)
+                    self.close_file(out_fd)
+                    print("写入第一个文件内容时失败")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+            self.close_file(fd1)
+
+            # 7. 添加分隔符（如果有）
+            if separator:
+                if not self.write_file(out_fd, separator, create_version=False):
+                    self.close_file(out_fd)
+                    print("写入分隔符时失败")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+
+            # 8. 读取并写入第二个文件
+            fd2 = self.open_file(file2_path, "r")
+            if fd2 is None:
+                self.close_file(out_fd)
+                print(f"无法打开第二个文件: {file2_path}")
+                if self.enable_logging:
+                    self.transaction_logger.rollback()
+                return False
+
+            # 复制第二个文件内容
+            while True:
+                chunk = self.read_file(fd2, 4096)
+                if not chunk:
+                    break
+                if not self.write_file(out_fd, chunk, create_version=False):
+                    self.close_file(fd2)
+                    self.close_file(out_fd)
+                    print("写入第二个文件内容时失败")
+                    if self.enable_logging:
+                        self.transaction_logger.rollback()
+                    return False
+            self.close_file(fd2)
+
+            # 9. 关闭输出文件
+            self.close_file(out_fd)
+
+            # 10. 创建一个版本（包含完整合并内容）
+            out_inode_id = self._find_inode_by_path(output_path)
+            if out_inode_id and self.enable_versions:
+                # 读取整个文件内容创建版本
+                out_fd = self.open_file(output_path, "r")
+                if out_fd:
+                    content = bytearray()
+                    while True:
+                        chunk = self.read_file(out_fd, 4096)
+                        if not chunk:
+                            break
+                        content.extend(chunk)
+                    self.close_file(out_fd)
+
+                    # 创建版本
+                    self.version_manager.create_version(
+                        out_inode_id, bytes(content),
+                        author=self.current_user,
+                        comment=f"Merged {file1_path} and {file2_path}"
+                    )
+
+            # 11. 提交事务
+            if self.enable_logging:
+                self.transaction_logger.commit()
+
+            print(f"文件合并成功: {file1_path} + {file2_path} -> {output_path}")
+            return True
+
+        except Exception as e:
+            print(f"合并文件时出错: {e}")
+            if self.enable_logging:
+                self.transaction_logger.rollback()
+            return False
+
+    # ---------- 其他新增功能方法 ----------
 
     def restore_version(self, path: str, version_id: str) -> bool:
         """恢复到指定版本"""
@@ -848,7 +1197,6 @@ class EnhancedFileSystem(SimpleFileSystem):
 
         if result:
             print(f"已恢复到版本 {version_id}")
-
         return result
 
     def list_file_versions(self, path: str) -> List[Dict]:
@@ -968,8 +1316,10 @@ class EnhancedFileSystem(SimpleFileSystem):
             stats['logging_stats'] = {
                 'log_file': self.transaction_logger.log_file,
                 'transactions_processed': self.operation_stats['creates'] +
-                                          self.operation_stats['deletes'] +
-                                          self.operation_stats['writes']
+                                         self.operation_stats['deletes'] +
+                                         self.operation_stats['writes'] +
+                                         self.operation_stats['copies'] +
+                                         self.operation_stats['merges']
             }
 
         if self.enable_versions:
@@ -1068,10 +1418,9 @@ class EnhancedFileSystem(SimpleFileSystem):
             # 读取当前块
             actual_block = inode.blocks[block_idx]
             bytes_in_block = min(self.block_size - block_offset, total_size - bytes_read)
-
             block_data = self._read_block(actual_block)
-            content.extend(block_data[block_offset:block_offset + bytes_in_block])
 
+            content.extend(block_data[block_offset:block_offset + bytes_in_block])
             bytes_read += bytes_in_block
 
         # 恢复位置
